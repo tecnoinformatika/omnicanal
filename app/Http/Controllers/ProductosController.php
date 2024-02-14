@@ -491,7 +491,7 @@ class ProductosController extends Controller
                 );
 
                 if ( !empty($response) ) {
-                    $term_id = $response->id;
+                    $term_id = $response[0]->id;
                     dd($term_id);
                 } else {
                     // Ha habido un error al crear el término.
@@ -503,8 +503,10 @@ class ProductosController extends Controller
                 }
             } else
             {
-                dd($term);
+                $term_id = $term[0]->id;
             }
+
+
             // Convertir los recursos del producto al formato de descargas de WooCommerce
             foreach ($producto['recursos'] as $recurso) {
                 $descarga = [
@@ -536,9 +538,10 @@ class ProductosController extends Controller
                 ],
               ];
 
-              $response = $woocommerce->post('products/' . $product_id . '/variations', [
-                'body' => json_encode($data),
-              ]);
+              $response = $this->woocommerce->post('products/' . $product_id . '/attributes',
+                $data
+              );
+              dd($response);
 
               if ( $response->getStatusCode() === 201 ) {
                 // El término se ha asociado correctamente al producto.
