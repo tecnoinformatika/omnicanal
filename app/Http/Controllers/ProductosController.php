@@ -7,8 +7,9 @@ use GuzzleHttp\Client;
 use DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
+use Illuminate\Support\Str as Str;
 use Automattic\WooCommerce\Client as WooCommerceClient;
+use Gemini\Laravel\Facades\Gemini;
 
 class ProductosController extends Controller
 {
@@ -29,29 +30,6 @@ class ProductosController extends Controller
 
             ]
         );
-    }
-    function sanitize_title($title) {
-        // Reemplazar caracteres con acentos por sus equivalentes sin acento
-        $accentedChars = ['á', 'é', 'í', 'ó', 'ú', 'ü', 'ñ', 'Á', 'É', 'Í', 'Ó', 'Ú', 'Ü', 'Ñ'];
-        $unaccentedChars = ['a', 'e', 'i', 'o', 'u', 'u', 'n', 'A', 'E', 'I', 'O', 'U', 'U', 'N'];
-        $title = str_replace($accentedChars, $unaccentedChars, $title);
-
-        // Eliminar todos los caracteres que no sean alfanuméricos ni guiones
-        $title = preg_replace('/[^\p{L}\p{N}-]/u', '', $title);
-
-        // Reemplazar espacios en blanco con guiones
-        $title = preg_replace('/\s+/', '-', $title);
-
-        // Convertir a minúsculas
-        $title = strtolower($title);
-
-        // Eliminar guiones consecutivos
-        $title = preg_replace('/-{2,}/', '-', $title);
-
-        // Eliminar guiones al principio y al final
-        $title = trim($title, '-');
-
-        return $title;
     }
     public function gettoken()
     {
@@ -148,6 +126,7 @@ class ProductosController extends Controller
     }
     public function importarProductosWooCommerce(Request $request)
     {
+
         $categoria_id = $request->input('subcategoria2');
         //dd($categoria_id);
         // Obtener todos los productos paginados de la categoría
@@ -254,7 +233,7 @@ class ProductosController extends Controller
                 if (!$categoriaExistente) {
                     $categoriaNueva = [
                         'name' => $categoria['nombre'],
-                        'slug' => $this->sanitize_title($categoria['nombre']),
+                        'slug' => Str::slug($categoria['nombre']),
                         // Otros campos de categoría que puedas necesitar
                     ];
                     $categoriaCreada = $this->woocommerce->post('products/categories', $categoriaNueva);
@@ -279,7 +258,7 @@ class ProductosController extends Controller
                     if (!$categoriaExistente2) {
                         $categoriaNueva2 = [
                             'name' => $categoria['nombre'],
-                            'slug' => $this->sanitize_title($categoria['nombre']),
+                            'slug' => Str::slug($categoria['nombre']),
                             'parent' => $padreId,
                             // Otros campos de categoría que puedas necesitar
                         ];
@@ -310,7 +289,7 @@ class ProductosController extends Controller
                     if (!$categoriaExistente3) {
                         $categoriaNueva3 = [
                             'name' => $categoria['nombre'],
-                            'slug' => $this->sanitize_title($categoria['nombre']),
+                            'slug' => Str::slug($categoria['nombre']),
                             'parent' => $padreId2,
                             // Otros campos de categoría que puedas necesitar
                         ];
@@ -331,7 +310,7 @@ class ProductosController extends Controller
     private function obtenerCategoriaPorNombre($nombre)
     {
         // Obtener la categoría por su nombre (slug)
-        $categoria = $this->woocommerce->get('products/categories', ['slug' => $this->sanitize_title($nombre)]);
+        $categoria = $this->woocommerce->get('products/categories', ['slug' => Str::slug($nombre)]);
         if (!empty($categoria)) {
             return $categoria[0]; // Devolver la primera categoría encontrada
         } else {
@@ -350,6 +329,44 @@ class ProductosController extends Controller
 
     private function crearActualizarProductoWooCommerce($producto)
     {
+        $attribute_name = 'Marca';
+
+        $data = [
+        'name' => $attribute_name,
+        'slug' => $attribute_name,
+        'type' => 'select',
+        'order_by' => 'menu_order',
+        'has_archives' => true,
+        'taxonomy' => 'pa_marca', // Nombre del taxonomía
+        ];
+
+        // Obtener el ID del atributo
+        $response = $this->woocommerce->get('products/attributes', [
+        'query' => [
+            'search' => $attribute_name,
+        ],
+        ]);
+
+        if ( empty($response) ) {
+                // El atributo no existe, crearlo.
+                $response = $this->woocommerce->post('products/attributes', $data);
+
+
+                if ( !empty($response )) {
+                    $attribute_id = $response[0]->id;
+                } else {
+                    // Ha habido un error al crear el atributo.
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Ha habido un error al crear el atributo.',
+                        'errors' => $response->json(),
+                    ]);
+                }
+
+        } else {
+
+            $attribute_id = $response[0]->id;
+        }
         //dd($producto);
         // Verificar si el producto ya existe en WooCommerce
         $productoWooCommerce = $this->woocommerce->get('products', ['sku' => $producto['modelo']]);
@@ -367,7 +384,18 @@ class ProductosController extends Controller
 
             $imagenes = $producto['imagenes'];
             $imagenesWooCommerce = [];
-            $nombrepro = $producto['categorias'][0]['nombre'].' '.$producto['marca']. ' '.$producto['modelo'];
+            $titulo = $producto['titulo'];
+            $marca = $producto['marca'];
+            $sku = $producto['modelo'];
+            $resultnombre = Gemini::geminiPro()->generateContent('genera un nombre de producto en español entendible maximo 120 caracteres, que no lleve asteriscos, ni salto de pagina, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo. 'Dejando al final siempre esto: ,'.$marca.' '.$sku);
+            $nombrepro = $resultnombre->text();
+            $resultdescripcion = Gemini::geminiPro()->generateContent('genera una descripcion de 2 parrafos bien explicados con titulo h2 de producto en español entendible, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo.'; Que sea compleatemente SEO compatible con esto: '.$nombrepro.'; no te olvides de incluir en el titulo la marca y la referencia o sku que son: '.$marca.' '.$sku);
+            $descripcioncorta = $resultdescripcion->text();
+            $resultkeywords = Gemini::geminiPro()->generateContent('De acuerdo a lo siguiente: '.$descripcioncorta.'; generame las keywords para posicionamiento seo siguiente los parametros del algoritmo de google y pues basandote en el texto que te doy, maximo 3 keywords, separadas por coma, sin saltos de pagina y sin caracteres extraños');
+            $keywords = $resultkeywords->text();
+            $resultmetadesc = Gemini::geminiPro()->generateContent('De acuerdo a lo siguiente: '.$descripcioncorta.'; y a las keywords: '.$keywords.'; generame una meta descripción optimizada para seo segun los parametros del algoritmo del buscador de google de maximo 160 caracteres, esto es sumamente importante el tamaño para que no se corte, puedes generar emojis, si es posible');
+            $metadesc = $resultmetadesc->text();
+            //dd($metadesc);
             if ($existencia > 0) {
                 // Si el inventario está disponible, establecer el estado del stock en "En stock"
                 $stock_status = 'instock';
@@ -419,12 +447,12 @@ class ProductosController extends Controller
             $productoNuevo = [
                 'name' => $nombrepro,
                 'sku' => $producto['modelo'],
-                'slug' => $this->sanitize_title($nombrepro),
+                'slug' => Str::slug($nombrepro),
                 'type' => 'simple',
                 'status' => 'publish',
                 'catalog_visibility' => 'visible',
                 'description' => $producto['descripcion'],
-                'short_description' => '<h2>'.$producto['categorias'][0]['nombre'].' '.$producto['marca']. ' '.$producto['modelo'].'</h2><br><p>'.$producto['titulo'].'</p>',
+                'short_description' => $descripcioncorta,
                 'regular_price' => $precio_descuento,
                 'purchasable' => true,
                 'downloads' => [],
@@ -444,17 +472,39 @@ class ProductosController extends Controller
                 'images' => $imagenesWooCommerce,
                 // Otros campos de producto que puedas necesitar
             ];
-            //$marcaNombre = $producto['marca'];
-            //$imagenmarca = $producto['marca_logo'];
-            //  Obtener o crear la marca en WooCommerce
-            //$marcaId = $this->obtenerCrearMarcaWooCommerce($marcaNombre, $imagenmarca);
 
-            // Crear el producto
-            //$productoNuevo = [
-                // Campos del producto...
-               // 'brands' => [['id' => $marcaId]], // Asignar la marca al producto
-                // Otros campos de producto que puedas necesitar
-           // ];
+            // Obtener el ID del término
+
+            $term = $this->woocommerce->get('products/attributes/'.$attribute_id.'/terms', [
+                'taxonomy' => 'pa_marca',
+                'search' => $marca, // Nombre o slug del término
+            ]);
+
+
+            if ( empty($term) ) {
+                // El término no existe, crearlo.
+                $response = $this->woocommerce->post('products/attributes/'.$attribute_id.'/terms', [
+
+                            'name' => $marca,
+                            'slug' => Str::slug($marca),
+                            ]
+                );
+
+                if ( !empty($response) ) {
+                    $term_id = $response->id;
+                    dd($term_id);
+                } else {
+                    // Ha habido un error al crear el término.
+                    return response()->json([
+                    'success' => false,
+                    'message' => 'Ha habido un error al crear la marca.',
+                    'errors' => $response->json(),
+                    ]);
+                }
+            } else
+            {
+                dd($term);
+            }
             // Convertir los recursos del producto al formato de descargas de WooCommerce
             foreach ($producto['recursos'] as $recurso) {
                 $descarga = [
@@ -463,16 +513,48 @@ class ProductosController extends Controller
                 ];
                 $productoNuevo['downloads'][] = $descarga; // Agregar la descarga al array de descargas
             }
+
             // Asignar categorías al producto
             $categoriasProducto = [];
             foreach ($producto['categorias'] as $categoria) {
                 $categoriasProducto[] = ['id' => $this->obtenerIdCategoriaWooCommerce($categoria['nombre'])];
             }
-            //dd($productoNuevo);
 
             $productoNuevo['categories'] = $categoriasProducto;
 
             $creado = $this->woocommerce->post('products', $productoNuevo);
+            $product_id = $creado->id; // ID del producto
+
+            //comienza a crear los terminos de marcas
+            $data = [
+                'attributes' => [
+                  [
+                    'id' => $attribute_id,
+                    'name' => $attribute_name,
+                    'value' => $marca, // Valor del atributo (Nombre de la marca)
+                  ],
+                ],
+              ];
+
+              $response = $woocommerce->post('products/' . $product_id . '/variations', [
+                'body' => json_encode($data),
+              ]);
+
+              if ( $response->getStatusCode() === 201 ) {
+                // El término se ha asociado correctamente al producto.
+                return response()->json([
+                  'success' => true,
+                  'message' => 'El término se ha asociado correctamente al producto.',
+                ]);
+              } else {
+                // Ha habido un error al asociar el término al producto.
+                return response()->json([
+                  'success' => false,
+                  'message' => 'Ha habido un error al asociar el término al producto.',
+                  'errors' => $response->json(),
+                ]);
+              }
+
 
         }else if ($existencia > 0) {
             $precio_descuento = $producto['precios']['precio_descuento'] * 1.2;
@@ -490,47 +572,12 @@ class ProductosController extends Controller
             // Puedes añadir aquí más acciones si es necesario
         }
     }
-    private function obtenerCrearMarcaWooCommerce($marcaNombre, $imagenmarca)
-    {
-        // Verificar si la marca ya existe en WooCommerce
-        $marcaExistente = $this->woocommerce->get('brands', ['search' => $marcaNombre]);
-        try{
-            //dd($marcaExistente);
-            if (!empty($marcaExistente)) {
-                // Si la marca ya existe, obtener su ID
-                $marcaId = $marcaExistente[0]->term_id;
-            } else {
-                // Si la marca no existe, crearla
-                $imagenData = file_get_contents($imagenmarca);
-                $imagenBase64 = base64_encode($imagenData);
-                // Crear la marca con su imagen
-                $marcaNueva = [
-                    'name' => $marcaNombre,
-                    'meta_data' => [
-                        [
-                            'key' => 'pwb_brand_image',
-                            'value' => $imagenBase64,
-                        ],
-                    ],
-                    'taxonomy' => 'pwb-brand',
-                ];
-                $marcaCreada = $this->woocommerce->post('brands', $marcaNueva);
-                //dd($marcaCreada);
-                $marcaId = $marcaCreada->term_id;
 
-            }
 
-            return $marcaId;
-        } catch (\Exception $e) {
-            // Manejar errores
-            echo 'Error al obtener/crear la marca en WooCommerce: ' . $e->getMessage();
-            return null;
-        }
-    }
     private function obtenerIdCategoriaWooCommerce($nombreCategoria)
     {
         // Obtener el ID de la categoría en WooCommerce
-        $categoriaWooCommerce = $this->woocommerce->get('products/categories', ['slug' => $this->sanitize_title($nombreCategoria)]);
+        $categoriaWooCommerce = $this->woocommerce->get('products/categories', ['slug' => Str::slug($nombreCategoria)]);
 
         // Verificar si se encontró la categoría
         if (isset($categoriaWooCommerce[0]->id)) {
