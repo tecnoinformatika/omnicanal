@@ -127,7 +127,7 @@ class ProductosController extends Controller
     public function importarProductosWooCommerce(Request $request)
     {
 
-        $categoria_id = $request->input('subcategoria2');
+        $categoria_id = $request->input('subcategoria');
         //dd($categoria_id);
         // Obtener todos los productos paginados de la categoría
         $productos = $this->obtenerProductosPaginados($categoria_id);
@@ -186,11 +186,12 @@ class ProductosController extends Controller
             $response = $client->get('https://developers.syscomcolombia.com/api/v1/productos', [
                 'query' => [
                     'categoria' => $categoriaId,
-                    'pagina' => $pagina
+                    'pagina' => $pagina,
+                    'stock' => true
                 ]
             ]);
             $productosPagina = json_decode($response->getBody()->getContents(), true);
-            //dd($productosPagina['productos'][0]['producto_id']);
+            //dd($productosPagina);
             // Agregar los productos de la página actual al array de productos
             // Verificar si hay productos en la página actual
             if (isset($productosPagina['productos']) && !empty($productosPagina['productos'])) {
@@ -380,183 +381,167 @@ class ProductosController extends Controller
                 $existencia = (int) $existencia;
             }
         if (empty($productoWooCommerce)) {
-            // Si el producto no existe, lo creamos
 
-            $imagenes = $producto['imagenes'];
-            $imagenesWooCommerce = [];
-            $titulo = $producto['titulo'];
-            $marca = $producto['marca'];
-            $sku = $producto['modelo'];
-            $resultnombre = Gemini::geminiPro()->generateContent('genera un nombre de producto en español entendible maximo 120 caracteres, que no lleve asteriscos, ni salto de pagina, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo. 'Dejando al final siempre esto: ,'.$marca.' '.$sku);
-            $nombrepro = $resultnombre->text();
-            $resultdescripcion = Gemini::geminiPro()->generateContent('genera una descripcion de 2 parrafos bien explicados con titulo h2 de producto en español entendible, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo.'; Que sea compleatemente SEO compatible con esto: '.$nombrepro.'; no te olvides de incluir en el titulo la marca y la referencia o sku que son: '.$marca.' '.$sku);
-            $descripcioncorta = $resultdescripcion->text();
-            $resultkeywords = Gemini::geminiPro()->generateContent('De acuerdo a lo siguiente: '.$descripcioncorta.'; generame las keywords para posicionamiento seo siguiente los parametros del algoritmo de google y pues basandote en el texto que te doy, maximo 3 keywords, separadas por coma, sin saltos de pagina y sin caracteres extraños');
-            $keywords = $resultkeywords->text();
-            $resultmetadesc = Gemini::geminiPro()->generateContent('De acuerdo a lo siguiente: '.$descripcioncorta.'; y a las keywords: '.$keywords.'; generame una meta descripción optimizada para seo segun los parametros del algoritmo del buscador de google de maximo 160 caracteres, esto es sumamente importante el tamaño para que no se corte, puedes generar emojis, si es posible');
-            $metadesc = $resultmetadesc->text();
-            //dd($metadesc);
-            if ($existencia > 0) {
-                // Si el inventario está disponible, establecer el estado del stock en "En stock"
-                $stock_status = 'instock';
-            } else {
-                // Si el inventario no está disponible, establecer el estado del stock en "Fuera de stock"
-                $stock_status = 'outofstock';
-            }
-            //dd($producto['producto_id']);
-            $imagenesWooCommerce = [];
-            try {
-                // Agregar imagen principal
-                $imagenPrincipal = [
-                    'src' => $producto['img_portada'], // URL de la imagen principal
-                    'alt' => 'Imagen principal de ' . $nombrepro . ' '. $producto['titulo'] .' Novatics Colombia, proveedores de tecnología en colombia y LATAM',
+                // Si el producto no existe, lo creamos
+
+                $imagenes = $producto['imagenes'];
+                $imagenesWooCommerce = [];
+                $titulo = $producto['titulo'];
+                $marca = $producto['marca'];
+                $sku = $producto['modelo'];
+                $context = [
+                    "safetyRatings" => [
+                        "url" => "https://es.wikipedia.org/wiki/Seguridad_del_autom%C3%B3vil",
+                    ],
                 ];
-                $imagenesWooCommerce[] = $imagenPrincipal;
-            } catch (\Exception $e) {
-                // Manejar la excepción (por ejemplo, registrarla para futura revisión)
-                // En este caso, solo vamos a omitir la imagen y continuar con la siguiente
+                $promtnombre = 'genera un nombre de producto en español entendible maximo 120 caracteres, que no lleve asteriscos, ni salto de pagina, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo. 'Dejando al final siempre esto: ,'.$marca.' '.$sku;
+                $resultnombre = Gemini::geminiPro()->generateContent($promtnombre);
+                dd($resultnombre);
+                if (!$resultnombre->success && $resultnombre->message == "The model is overloaded. Please try again later.") {
+                    // Esperar un tiempo (por ejemplo, 10 segundos)
+                    sleep(10);
 
-            }
-            // Agregar imágenes de la galería
-            foreach ($producto['imagenes'] as $imagen) {
+                    // Reintentar
+                    $resultnombre = GeminiPro::generateContent($promtnombre);
+                }
+                $nombrepro = $resultnombre->text();
+                $promtdesc = 'genera una descripcion de 2 parrafos bien explicados con titulo h2 de producto en español entendible, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo.'; Que sea compleatemente SEO compatible con esto: '.$nombrepro.'; no te olvides de incluir en el titulo la marca y la referencia o sku que son: '.$marca.' '.$sku;
+                $resultdescripcion = Gemini::geminiPro()->generateContent($promtdesc);
+                if (!$resultdescripcion->success && $resultdescripcion->message == "The model is overloaded. Please try again later.") {
+                    // Esperar un tiempo (por ejemplo, 10 segundos)
+                    sleep(10);
+
+                    // Reintentar
+                    $resultdescripcion = GeminiPro::generateContent($promtdesc);
+                }
+                $descripcioncorta = $resultdescripcion->text();
+                // $resultkeywords = Gemini::geminiPro()->generateContent('De acuerdo a lo siguiente: '.$descripcioncorta.'; generame las keywords para posicionamiento seo siguiente los parametros del algoritmo de google y pues basandote en el texto que te doy, maximo 3 keywords, separadas por coma, sin saltos de pagina y sin caracteres extraños');
+                // $keywords = $resultkeywords->text();
+                // $resultmetadesc = Gemini::geminiPro()->generateContent('De acuerdo a lo siguiente: '.$descripcioncorta.'; y a las keywords: '.$keywords.'; generame una meta descripción optimizada para seo segun los parametros del algoritmo del buscador de google de maximo 160 caracteres, esto es sumamente importante el tamaño para que no se corte, puedes generar emojis, si es posible');
+                // $metadesc = $resultmetadesc->text();
+                //dd($metadesc);
+                if ($existencia > 0) {
+                    // Si el inventario está disponible, establecer el estado del stock en "En stock"
+                    $stock_status = 'instock';
+                } else {
+                    // Si el inventario no está disponible, establecer el estado del stock en "Fuera de stock"
+                    $stock_status = 'outofstock';
+                }
+                //dd($producto['producto_id']);
+                $imagenesWooCommerce = [];
                 try {
-                    if (!empty($imagen['imagen'])) {
-                        $imagenGaleria = [
-                            'src' => $imagen['imagen'], // URL de la imagen de la galería
-                            'alt' => 'Imagen de la galería de ' . $nombrepro .' Novatics Colombia, proveedores de tecnología en colombia y LATAM',
-                        ];
-
-                    }
-
-                    // Agregar la imagen al array de imágenes de WooCommerce
-                    $imagenesWooCommerce[] = $imagenGaleria;
+                    // Agregar imagen principal
+                    $imagenPrincipal = [
+                        'src' => $producto['img_portada'], // URL de la imagen principal
+                        'alt' => 'Imagen principal de ' . $nombrepro . ' '. $producto['titulo'] .' Novatics Colombia, proveedores de tecnología en colombia y LATAM',
+                    ];
+                    $imagenesWooCommerce[] = $imagenPrincipal;
                 } catch (\Exception $e) {
                     // Manejar la excepción (por ejemplo, registrarla para futura revisión)
                     // En este caso, solo vamos a omitir la imagen y continuar con la siguiente
-                    continue;
+
+                }
+                // Agregar imágenes de la galería
+                foreach ($producto['imagenes'] as $imagen) {
+                    try {
+                        if (!empty($imagen['imagen'])) {
+                            $imagenGaleria = [
+                                'src' => $imagen['imagen'], // URL de la imagen de la galería
+                                'alt' => 'Imagen de la galería de ' . $nombrepro .' Novatics Colombia, proveedores de tecnología en colombia y LATAM',
+                            ];
+
+                        }
+
+                        // Agregar la imagen al array de imágenes de WooCommerce
+                        $imagenesWooCommerce[] = $imagenGaleria;
+                    } catch (\Exception $e) {
+                        // Manejar la excepción (por ejemplo, registrarla para futura revisión)
+                        // En este caso, solo vamos a omitir la imagen y continuar con la siguiente
+                        continue;
+                    }
+
+                }
+                $precio_descuento = $producto['precios']['precio_descuento'] * 1.2;
+                $precio_especial = $producto['precios']['precio_especial'] * 1.2;
+
+                // Redondear los precios a dos decimales
+                $precio_descuento = number_format($precio_descuento, 2, '.', '');
+                $precio_especial = number_format($precio_especial, 2, '.', '');
+                //dd((double)($producto['precios']['precio_especial'] * 1.2));
+                $productoNuevo = [
+                    'name' => $nombrepro,
+                    'sku' => $producto['modelo'],
+                    'slug' => Str::slug($nombrepro),
+                    'type' => 'simple',
+                    'status' => 'publish',
+                    'catalog_visibility' => 'visible',
+                    'description' => $producto['descripcion'],
+                    'short_description' => $descripcioncorta,
+                    'regular_price' => $precio_descuento,
+                    'purchasable' => true,
+                    'downloads' => [],
+                    'tax_status' => 'taxable',
+                    'manage_stock' => true,
+                    'stock_quantity' => $existencia,
+                    'weight' => $producto['peso'],
+                    'dimensions' => [
+                        'length' => $producto['largo'],
+                        'width' => $producto['ancho'],
+                        'height' => $producto['alto']
+                    ],
+                    'shipping_required' => true,
+                    'shipping_taxable' => false,
+                    'reviews_allowed' => true,
+                    'stock_status' => $stock_status,
+                    'images' => $imagenesWooCommerce,
+                    // Otros campos de producto que puedas necesitar
+                ];
+                // Añadir atributo de Marca al producto
+                $productoNuevo['attributes'] = [
+                    [
+                        'id' => $attribute_id,
+                        'name' => $attribute_name,
+                        'options' => [$marca], // Valor del atributo (Nombre de la marca)
+                    ],
+                ];
+
+
+                // Convertir los recursos del producto al formato de descargas de WooCommerce
+                foreach ($producto['recursos'] as $recurso) {
+                    $descarga = [
+                        'name' => $recurso['recurso'], // Nombre de la descarga
+                        'file' => $recurso['path'],    // URL del archivo
+                    ];
+                    $productoNuevo['downloads'][] = $descarga; // Agregar la descarga al array de descargas
                 }
 
-            }
-            $precio_descuento = $producto['precios']['precio_descuento'] * 1.2;
-            $precio_especial = $producto['precios']['precio_especial'] * 1.2;
+                // Asignar categorías al producto
+                $categoriasProducto = [];
+                foreach ($producto['categorias'] as $categoria) {
+                    $categoriasProducto[] = ['id' => $this->obtenerIdCategoriaWooCommerce($categoria['nombre'])];
+                }
 
-            // Redondear los precios a dos decimales
-            $precio_descuento = number_format($precio_descuento, 2, '.', '');
-            $precio_especial = number_format($precio_especial, 2, '.', '');
-            //dd((double)($producto['precios']['precio_especial'] * 1.2));
-            $productoNuevo = [
-                'name' => $nombrepro,
-                'sku' => $producto['modelo'],
-                'slug' => Str::slug($nombrepro),
-                'type' => 'simple',
-                'status' => 'publish',
-                'catalog_visibility' => 'visible',
-                'description' => $producto['descripcion'],
-                'short_description' => $descripcioncorta,
-                'regular_price' => $precio_descuento,
-                'purchasable' => true,
-                'downloads' => [],
-                'tax_status' => 'taxable',
-                'manage_stock' => true,
-                'stock_quantity' => $existencia,
-                'weight' => $producto['peso'],
-                'dimensions' => [
-                    'length' => $producto['largo'],
-                    'width' => $producto['ancho'],
-                    'height' => $producto['alto']
-                ],
-                'shipping_required' => true,
-                'shipping_taxable' => false,
-                'reviews_allowed' => true,
-                'stock_status' => $stock_status,
-                'images' => $imagenesWooCommerce,
-                // Otros campos de producto que puedas necesitar
-            ];
+                $productoNuevo['categories'] = $categoriasProducto;
 
-            // Obtener el ID del término
-
-            $term = $this->woocommerce->get('products/attributes/'.$attribute_id.'/terms', [
-                'taxonomy' => 'pa_marca',
-                'search' => $marca, // Nombre o slug del término
-            ]);
+                $creado = $this->woocommerce->post('products', $productoNuevo);
+                $product_id = $creado->id; // ID del producto
 
 
-            if ( empty($term) ) {
-                // El término no existe, crearlo.
-                $response = $this->woocommerce->post('products/attributes/'.$attribute_id.'/terms', [
-
-                            'name' => $marca,
-                            'slug' => Str::slug($marca),
-                            ]
-                );
-
-                if ( !empty($response) ) {
-                    $term_id = $response[0]->id;
-                    dd($term_id);
-                } else {
-                    // Ha habido un error al crear el término.
+                if ($creado) {
+                    // El producto se ha creado correctamente
                     return response()->json([
-                    'success' => false,
-                    'message' => 'Ha habido un error al crear la marca.',
-                    'errors' => $response->json(),
+                        'success' => true,
+                        'message' => 'El producto se ha creado correctamente.',
+                    ]);
+                } else {
+                    // Ha habido un error al crear el producto
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Ha habido un error al crear el producto.',
+                        'errors' => $creado->json(),
                     ]);
                 }
-            } else
-            {
-                $term_id = $term[0]->id;
-            }
 
-
-            // Convertir los recursos del producto al formato de descargas de WooCommerce
-            foreach ($producto['recursos'] as $recurso) {
-                $descarga = [
-                    'name' => $recurso['recurso'], // Nombre de la descarga
-                    'file' => $recurso['path'],    // URL del archivo
-                ];
-                $productoNuevo['downloads'][] = $descarga; // Agregar la descarga al array de descargas
-            }
-
-            // Asignar categorías al producto
-            $categoriasProducto = [];
-            foreach ($producto['categorias'] as $categoria) {
-                $categoriasProducto[] = ['id' => $this->obtenerIdCategoriaWooCommerce($categoria['nombre'])];
-            }
-
-            $productoNuevo['categories'] = $categoriasProducto;
-
-            $creado = $this->woocommerce->post('products', $productoNuevo);
-            $product_id = $creado->id; // ID del producto
-
-            //comienza a crear los terminos de marcas
-            $data = [
-                'attributes' => [
-                  [
-                    'id' => $attribute_id,
-                    'name' => $attribute_name,
-                    'value' => $marca, // Valor del atributo (Nombre de la marca)
-                  ],
-                ],
-              ];
-
-              $response = $this->woocommerce->post('products/' . $product_id . '/attributes',
-                $data
-              );
-              dd($response);
-
-              if ( $response->getStatusCode() === 201 ) {
-                // El término se ha asociado correctamente al producto.
-                return response()->json([
-                  'success' => true,
-                  'message' => 'El término se ha asociado correctamente al producto.',
-                ]);
-              } else {
-                // Ha habido un error al asociar el término al producto.
-                return response()->json([
-                  'success' => false,
-                  'message' => 'Ha habido un error al asociar el término al producto.',
-                  'errors' => $response->json(),
-                ]);
-              }
 
 
         }else if ($existencia > 0) {
@@ -573,6 +558,21 @@ class ProductosController extends Controller
             ]);
 
             // Puedes añadir aquí más acciones si es necesario
+        }
+    }
+    function descargarImagen($url, $directorioTemporal) {
+        $nombreArchivo = basename($url);
+        $rutaArchivoTemporal = $directorioTemporal . '/' . $nombreArchivo;
+
+        // Descargar la imagen
+        $contenidoImagen = @file_get_contents($url);
+
+        if ($contenidoImagen !== false) {
+            // Guardar la imagen en el directorio temporal
+            file_put_contents($rutaArchivoTemporal, $contenidoImagen);
+            return $rutaArchivoTemporal; // Devolver la ruta del archivo descargado
+        } else {
+            return null; // La descarga falló, devolver null
         }
     }
 
