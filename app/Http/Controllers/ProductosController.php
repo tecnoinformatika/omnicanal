@@ -396,24 +396,9 @@ class ProductosController extends Controller
                 ];
                 $promtnombre = 'genera un nombre de producto en español entendible maximo 120 caracteres, que no lleve asteriscos, ni salto de pagina, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo. 'Dejando al final siempre esto: ,'.$marca.' '.$sku;
                 $resultnombre = Gemini::geminiPro()->generateContent($promtnombre);
-                dd($resultnombre);
-                if (!$resultnombre->success && $resultnombre->message == "The model is overloaded. Please try again later.") {
-                    // Esperar un tiempo (por ejemplo, 10 segundos)
-                    sleep(10);
-
-                    // Reintentar
-                    $resultnombre = GeminiPro::generateContent($promtnombre);
-                }
                 $nombrepro = $resultnombre->text();
                 $promtdesc = 'genera una descripcion de 2 parrafos bien explicados con titulo h2 de producto en español entendible, que me permita entender al cliente rapidamente que producto es basandote en lo siguiente:'.$titulo.'; Que sea compleatemente SEO compatible con esto: '.$nombrepro.'; no te olvides de incluir en el titulo la marca y la referencia o sku que son: '.$marca.' '.$sku;
                 $resultdescripcion = Gemini::geminiPro()->generateContent($promtdesc);
-                if (!$resultdescripcion->success && $resultdescripcion->message == "The model is overloaded. Please try again later.") {
-                    // Esperar un tiempo (por ejemplo, 10 segundos)
-                    sleep(10);
-
-                    // Reintentar
-                    $resultdescripcion = GeminiPro::generateContent($promtdesc);
-                }
                 $descripcioncorta = $resultdescripcion->text();
                 // $resultkeywords = Gemini::geminiPro()->generateContent('De acuerdo a lo siguiente: '.$descripcioncorta.'; generame las keywords para posicionamiento seo siguiente los parametros del algoritmo de google y pues basandote en el texto que te doy, maximo 3 keywords, separadas por coma, sin saltos de pagina y sin caracteres extraños');
                 // $keywords = $resultkeywords->text();
