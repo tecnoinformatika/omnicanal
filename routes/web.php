@@ -16,7 +16,7 @@ use App\Http\Controllers\ProductosController;
 */
 
 Route::get('/', [InicioController::class, 'inicio'])->name('/');
-
+Route::get('inicio', [InicioController::class, 'index'])->name('inicio');
 Route::get('importarmarcas', [ImportController::class, 'importarmarcas'])->name('importarmarcas');
 Route::post('/buscar-productos', [ProductosController::class, 'importarProductosWooCommerce'])->name('buscar_productos');
 Route::get('/subcategorias/{categoria_id}', [ProductosController::class, 'obtenerSubcategorias'])->name('subcategorias.obtener');
